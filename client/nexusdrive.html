@@ -1,0 +1,1414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NexusDrive — Distributed File Storage</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ─── Reset & Variables ─────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #0d0f14;
+  --surface: #141720;
+  --surface2: #1a1e2b;
+  --surface3: #212535;
+  --border: rgba(255,255,255,0.07);
+  --border2: rgba(255,255,255,0.12);
+  --text: #e8eaf0;
+  --text2: #8b90a0;
+  --text3: #555a6e;
+  --accent: #6c8aff;
+  --accent2: #4d6bff;
+  --accent-glow: rgba(108,138,255,0.15);
+  --green: #34d399;
+  --green-bg: rgba(52,211,153,0.1);
+  --red: #f87171;
+  --red-bg: rgba(248,113,113,0.1);
+  --amber: #fbbf24;
+  --amber-bg: rgba(251,191,36,0.1);
+  --purple: #a78bfa;
+  --purple-bg: rgba(167,139,250,0.1);
+  --teal: #22d3ee;
+  --teal-bg: rgba(34,211,238,0.08);
+  --radius: 10px;
+  --radius-lg: 14px;
+  --sidebar-w: 240px;
+  --font: 'DM Sans', sans-serif;
+  --mono: 'JetBrains Mono', monospace;
+  --transition: 0.18s ease;
+}
+
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  display: flex;
+  overflow: hidden;
+  font-size: 14px;
+}
+
+/* ─── Scrollbar ─────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+/* ─── Auth Screen ───────────────────────────────────────────────────── */
+#auth-screen {
+  position: fixed; inset: 0;
+  background: var(--bg);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1000;
+}
+.auth-card {
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-lg);
+  padding: 40px;
+  width: 380px;
+  position: relative;
+  overflow: hidden;
+}
+.auth-card::before {
+  content: '';
+  position: absolute;
+  top: -60px; left: -60px; right: -60px;
+  height: 200px;
+  background: radial-gradient(ellipse at 50% 0, rgba(108,138,255,0.2) 0%, transparent 70%);
+  pointer-events: none;
+}
+.auth-logo {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 28px;
+}
+.logo-icon {
+  width: 36px; height: 36px;
+  background: linear-gradient(135deg, var(--accent), var(--purple));
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px;
+}
+.auth-logo span { font-size: 18px; font-weight: 600; }
+.auth-tabs {
+  display: flex; gap: 2px;
+  background: var(--surface2);
+  border-radius: 8px;
+  padding: 3px;
+  margin-bottom: 24px;
+}
+.auth-tab {
+  flex: 1; padding: 8px; border: none;
+  background: none; color: var(--text2);
+  border-radius: 6px; cursor: pointer;
+  font-family: var(--font); font-size: 13px;
+  transition: var(--transition);
+}
+.auth-tab.active {
+  background: var(--surface3);
+  color: var(--text);
+}
+.form-group { margin-bottom: 14px; }
+.form-group label { display: block; font-size: 12px; color: var(--text2); margin-bottom: 6px; }
+.form-group input {
+  width: 100%; padding: 10px 12px;
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 8px; color: var(--text);
+  font-family: var(--font); font-size: 14px;
+  transition: var(--transition); outline: none;
+}
+.form-group input:focus { border-color: var(--accent); background: var(--surface3); }
+.btn-primary {
+  width: 100%; padding: 11px;
+  background: var(--accent); border: none;
+  border-radius: 8px; color: #fff;
+  font-family: var(--font); font-size: 14px; font-weight: 500;
+  cursor: pointer; transition: var(--transition);
+}
+.btn-primary:hover { background: var(--accent2); }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+.auth-error { color: var(--red); font-size: 12px; margin-top: 10px; text-align: center; }
+
+/* ─── App Layout ────────────────────────────────────────────────────── */
+#app { display: none; width: 100vw; height: 100vh; }
+#app.visible { display: flex; }
+
+/* ─── Sidebar ───────────────────────────────────────────────────────── */
+.sidebar {
+  width: var(--sidebar-w);
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  padding: 20px 12px;
+  flex-shrink: 0;
+}
+.brand {
+  display: flex; align-items: center; gap: 10px;
+  padding: 4px 8px 20px;
+}
+.brand .logo-icon { width: 30px; height: 30px; font-size: 15px; border-radius: 7px; }
+.brand span { font-size: 16px; font-weight: 600; letter-spacing: -0.3px; }
+.sidebar-nav { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+.nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 12px; border-radius: 8px;
+  cursor: pointer; color: var(--text2);
+  transition: var(--transition); font-size: 13px;
+  border: none; background: none; text-align: left;
+  width: 100%;
+}
+.nav-item:hover { background: var(--surface2); color: var(--text); }
+.nav-item.active { background: var(--accent-glow); color: var(--accent); }
+.nav-item .icon { font-size: 16px; width: 20px; text-align: center; }
+.nav-sep { height: 1px; background: var(--border); margin: 10px 0; }
+
+/* Node status in sidebar */
+.nodes-panel { margin-top: auto; }
+.nodes-title { font-size: 11px; font-weight: 500; color: var(--text3); text-transform: uppercase; letter-spacing: 0.8px; padding: 0 8px; margin-bottom: 8px; }
+.node-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 12px; border-radius: 8px;
+  font-size: 12px; color: var(--text2);
+  cursor: pointer; transition: var(--transition);
+}
+.node-item:hover { background: var(--surface2); }
+.node-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.node-dot.online { background: var(--green); box-shadow: 0 0 6px var(--green); }
+.node-dot.failed { background: var(--red); box-shadow: 0 0 6px var(--red); }
+.node-name { flex: 1; font-family: var(--mono); font-size: 11px; }
+.node-chunks { font-size: 11px; color: var(--text3); }
+.node-fail-btn {
+  font-size: 10px; padding: 2px 6px;
+  background: none; border: 1px solid var(--border2);
+  border-radius: 4px; color: var(--text3);
+  cursor: pointer; transition: var(--transition);
+  opacity: 0;
+}
+.node-item:hover .node-fail-btn { opacity: 1; }
+.node-fail-btn:hover { border-color: var(--red); color: var(--red); }
+.node-fail-btn.restore:hover { border-color: var(--green); color: var(--green); }
+
+/* Storage bar */
+.storage-bar-wrap { padding: 12px 8px 0; }
+.storage-label { display: flex; justify-content: space-between; font-size: 11px; color: var(--text3); margin-bottom: 6px; }
+.storage-bar { height: 3px; background: var(--surface3); border-radius: 2px; overflow: hidden; }
+.storage-bar-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--purple)); border-radius: 2px; transition: width 0.5s; }
+
+/* ─── Main Content ──────────────────────────────────────────────────── */
+.main {
+  flex: 1; display: flex; flex-direction: column;
+  overflow: hidden; background: var(--bg);
+}
+
+/* Topbar */
+.topbar {
+  display: flex; align-items: center; gap: 12px;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  flex-shrink: 0;
+}
+.topbar-title { font-size: 16px; font-weight: 600; flex: 1; }
+.topbar-user {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px; color: var(--text2);
+}
+.user-avatar {
+  width: 30px; height: 30px;
+  background: linear-gradient(135deg, var(--accent), var(--purple));
+  border-radius: 50%; display: flex; align-items: center;
+  justify-content: center; font-size: 12px; font-weight: 600; color: #fff;
+}
+.btn-logout {
+  padding: 6px 12px; background: none;
+  border: 1px solid var(--border); border-radius: 7px;
+  color: var(--text2); cursor: pointer; font-family: var(--font);
+  font-size: 12px; transition: var(--transition);
+}
+.btn-logout:hover { border-color: var(--border2); color: var(--text); }
+
+/* ─── Panels (views) ────────────────────────────────────────────────── */
+.panel { display: none; flex: 1; overflow: hidden; flex-direction: column; padding: 24px; }
+.panel.active { display: flex; }
+
+/* ─── Upload Zone ───────────────────────────────────────────────────── */
+.upload-zone {
+  border: 2px dashed var(--border2);
+  border-radius: var(--radius-lg);
+  padding: 48px 32px;
+  text-align: center;
+  transition: var(--transition);
+  cursor: pointer;
+  background: var(--surface);
+  margin-bottom: 24px;
+  flex-shrink: 0;
+}
+.upload-zone:hover, .upload-zone.dragover {
+  border-color: var(--accent);
+  background: var(--accent-glow);
+}
+.upload-zone-icon { font-size: 40px; margin-bottom: 12px; }
+.upload-zone h3 { font-size: 15px; margin-bottom: 6px; }
+.upload-zone p { color: var(--text2); font-size: 13px; }
+.upload-zone input[type=file] { display: none; }
+.upload-options { display: flex; gap: 12px; margin-top: 16px; justify-content: center; flex-wrap: wrap; }
+.toggle-label {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 12px; color: var(--text2); cursor: pointer;
+  padding: 6px 12px; border: 1px solid var(--border);
+  border-radius: 7px; transition: var(--transition);
+}
+.toggle-label:hover { border-color: var(--border2); color: var(--text); }
+.toggle-label input { accent-color: var(--accent); }
+
+/* Upload progress */
+.upload-progress {
+  display: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 20px;
+  margin-bottom: 16px;
+}
+.upload-progress.visible { display: block; }
+.progress-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-size: 13px; }
+.progress-track { height: 4px; background: var(--surface3); border-radius: 2px; overflow: hidden; }
+.progress-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--purple)); border-radius: 2px; transition: width 0.3s; }
+.chunk-viz { display: flex; gap: 3px; flex-wrap: wrap; margin-top: 12px; }
+.chunk-block {
+  width: 24px; height: 24px; border-radius: 4px;
+  background: var(--surface3); border: 1px solid var(--border);
+  font-size: 9px; display: flex; align-items: center;
+  justify-content: center; color: var(--text3);
+  transition: all 0.3s; font-family: var(--mono);
+}
+.chunk-block.uploading { border-color: var(--accent); background: var(--accent-glow); color: var(--accent); }
+.chunk-block.done { border-color: var(--green); background: var(--green-bg); color: var(--green); }
+.chunk-block.replicated { border-color: var(--purple); background: var(--purple-bg); color: var(--purple); }
+
+/* ─── File List ─────────────────────────────────────────────────────── */
+.files-header {
+  display: flex; align-items: center; gap: 12px;
+  margin-bottom: 16px; flex-shrink: 0;
+}
+.files-count { color: var(--text2); font-size: 13px; }
+.search-box {
+  flex: 1; padding: 8px 12px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; color: var(--text);
+  font-family: var(--font); font-size: 13px; outline: none;
+  transition: var(--transition);
+}
+.search-box:focus { border-color: var(--accent); }
+.view-toggle { display: flex; gap: 2px; }
+.view-btn {
+  padding: 7px 10px; background: none;
+  border: 1px solid var(--border); color: var(--text2);
+  cursor: pointer; font-size: 14px; transition: var(--transition);
+}
+.view-btn:first-child { border-radius: 7px 0 0 7px; }
+.view-btn:last-child { border-radius: 0 7px 7px 0; }
+.view-btn.active { background: var(--surface2); color: var(--accent); border-color: var(--border2); }
+
+.files-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+  overflow-y: auto;
+  flex: 1;
+  align-content: start;
+  padding-bottom: 20px;
+}
+.files-grid.list-mode { grid-template-columns: 1fr; }
+
+.file-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  cursor: pointer;
+  transition: var(--transition);
+  position: relative;
+  overflow: hidden;
+}
+.file-card:hover { border-color: var(--border2); background: var(--surface2); }
+.file-card::before {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  background: linear-gradient(90deg, var(--accent), var(--purple));
+  opacity: 0; transition: var(--transition);
+}
+.file-card:hover::before { opacity: 1; }
+.file-icon { font-size: 32px; margin-bottom: 10px; }
+.file-name { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 4px; }
+.file-meta { font-size: 11px; color: var(--text2); }
+.file-badges { display: flex; gap: 4px; margin-top: 8px; flex-wrap: wrap; }
+.badge {
+  font-size: 10px; padding: 2px 7px; border-radius: 20px;
+  font-family: var(--mono);
+}
+.badge-encrypted { background: var(--amber-bg); color: var(--amber); }
+.badge-chunks { background: var(--teal-bg); color: var(--teal); }
+.badge-nodes { background: var(--purple-bg); color: var(--purple); }
+.file-actions {
+  display: flex; gap: 6px; margin-top: 12px;
+  opacity: 0; transition: var(--transition);
+}
+.file-card:hover .file-actions { opacity: 1; }
+.act-btn {
+  flex: 1; padding: 5px;
+  background: var(--surface3); border: 1px solid var(--border);
+  border-radius: 6px; color: var(--text2);
+  cursor: pointer; font-size: 13px; transition: var(--transition);
+}
+.act-btn:hover { color: var(--text); border-color: var(--border2); }
+.act-btn.danger:hover { color: var(--red); border-color: var(--red); }
+.act-btn.primary:hover { color: var(--accent); border-color: var(--accent); }
+
+/* List mode card */
+.files-grid.list-mode .file-card {
+  padding: 12px 16px;
+  display: flex; align-items: center; gap: 12px;
+}
+.files-grid.list-mode .file-icon { font-size: 22px; margin: 0; flex-shrink: 0; }
+.files-grid.list-mode .file-info { flex: 1; min-width: 0; }
+.files-grid.list-mode .file-badges { margin-top: 2px; }
+.files-grid.list-mode .file-actions { margin: 0; opacity: 1; }
+
+.empty-state {
+  text-align: center; padding: 60px 20px;
+  color: var(--text2);
+}
+.empty-state .icon { font-size: 48px; margin-bottom: 12px; }
+.empty-state h3 { font-size: 15px; margin-bottom: 6px; color: var(--text); }
+
+/* ─── Node Dashboard ─────────────────────────────────────────────────── */
+.nodes-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.node-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  position: relative; overflow: hidden;
+}
+.node-card.failed { border-color: rgba(248,113,113,0.3); background: rgba(248,113,113,0.04); }
+.node-card.online { border-color: rgba(52,211,153,0.2); }
+.node-card-header { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+.node-card-dot { width: 10px; height: 10px; border-radius: 50%; }
+.node-card-dot.online { background: var(--green); box-shadow: 0 0 8px var(--green); }
+.node-card-dot.failed { background: var(--red); box-shadow: 0 0 8px var(--red); }
+.node-card-title { font-size: 15px; font-weight: 600; font-family: var(--mono); flex: 1; }
+.node-card-status { font-size: 11px; padding: 3px 8px; border-radius: 20px; }
+.node-card-status.online { background: var(--green-bg); color: var(--green); }
+.node-card-status.failed { background: var(--red-bg); color: var(--red); }
+.node-stat { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 8px; }
+.node-stat-label { color: var(--text2); }
+.node-stat-value { font-family: var(--mono); color: var(--text); }
+.node-btn {
+  width: 100%; padding: 8px; border-radius: 8px;
+  font-family: var(--font); font-size: 13px;
+  cursor: pointer; transition: var(--transition); margin-top: 12px;
+  border: 1px solid var(--border);
+}
+.node-btn.fail { background: none; color: var(--red); border-color: rgba(248,113,113,0.3); }
+.node-btn.fail:hover { background: var(--red-bg); }
+.node-btn.restore { background: none; color: var(--green); border-color: rgba(52,211,153,0.3); }
+.node-btn.restore:hover { background: var(--green-bg); }
+
+.arch-diagram {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+}
+.arch-title { font-size: 13px; font-weight: 500; margin-bottom: 16px; color: var(--text2); }
+
+/* ─── Logs Panel ─────────────────────────────────────────────────────── */
+.log-list { display: flex; flex-direction: column; gap: 6px; overflow-y: auto; flex: 1; }
+.log-entry {
+  display: flex; gap: 12px; align-items: flex-start;
+  padding: 10px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 12px;
+}
+.log-time { font-family: var(--mono); color: var(--text3); flex-shrink: 0; font-size: 11px; }
+.log-action { font-weight: 500; flex-shrink: 0; min-width: 80px; }
+.log-action.upload { color: var(--green); }
+.log-action.download { color: var(--accent); }
+.log-action.delete { color: var(--red); }
+.log-action.rename { color: var(--amber); }
+.log-action.login { color: var(--purple); }
+.log-action.node_failure { color: var(--red); }
+.log-action.node_restore { color: var(--green); }
+.log-details { color: var(--text2); flex: 1; }
+
+/* ─── Toast ──────────────────────────────────────────────────────────── */
+.toast-container { position: fixed; bottom: 24px; right: 24px; z-index: 9999; display: flex; flex-direction: column; gap: 8px; }
+.toast {
+  padding: 12px 16px; border-radius: var(--radius);
+  font-size: 13px; min-width: 250px; max-width: 360px;
+  display: flex; align-items: center; gap: 10px;
+  animation: slideIn 0.2s ease;
+  border: 1px solid;
+}
+.toast.success { background: var(--green-bg); border-color: rgba(52,211,153,0.3); color: var(--green); }
+.toast.error { background: var(--red-bg); border-color: rgba(248,113,113,0.3); color: var(--red); }
+.toast.info { background: var(--accent-glow); border-color: rgba(108,138,255,0.3); color: var(--accent); }
+@keyframes slideIn { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+/* ─── Modal ──────────────────────────────────────────────────────────── */
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.7); backdrop-filter: blur(4px);
+  display: none; align-items: center; justify-content: center;
+  z-index: 500;
+}
+.modal-overlay.open { display: flex; }
+.modal {
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-lg);
+  padding: 24px; min-width: 400px; max-width: 520px;
+  width: 90%;
+}
+.modal h3 { font-size: 16px; margin-bottom: 16px; }
+.modal-input {
+  width: 100%; padding: 10px 12px;
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 8px; color: var(--text);
+  font-family: var(--font); font-size: 14px; outline: none;
+  transition: var(--transition);
+}
+.modal-input:focus { border-color: var(--accent); }
+.modal-actions { display: flex; gap: 10px; margin-top: 16px; justify-content: flex-end; }
+.btn-cancel {
+  padding: 9px 18px; background: none;
+  border: 1px solid var(--border); border-radius: 8px;
+  color: var(--text2); cursor: pointer; font-family: var(--font);
+  font-size: 13px; transition: var(--transition);
+}
+.btn-cancel:hover { border-color: var(--border2); color: var(--text); }
+.btn-confirm {
+  padding: 9px 18px;
+  background: var(--accent); border: none;
+  border-radius: 8px; color: #fff;
+  font-family: var(--font); font-size: 13px; font-weight: 500;
+  cursor: pointer; transition: var(--transition);
+}
+.btn-confirm:hover { background: var(--accent2); }
+.file-detail-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+.file-detail-row:last-child { border: none; }
+.file-detail-label { color: var(--text2); }
+.file-detail-val { font-family: var(--mono); font-size: 12px; color: var(--text); max-width: 240px; word-break: break-all; }
+
+/* ─── Chunk Map ──────────────────────────────────────────────────────── */
+.chunk-map { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 12px; }
+.chunk-pill {
+  padding: 4px 8px; border-radius: 6px;
+  font-size: 10px; font-family: var(--mono);
+  background: var(--surface3); border: 1px solid var(--border);
+  color: var(--text2); cursor: default;
+  position: relative;
+}
+.chunk-pill:hover { border-color: var(--accent); color: var(--text); }
+.chunk-node-list { font-size: 10px; color: var(--teal); }
+
+/* ─── Utils ──────────────────────────────────────────────────────────── */
+.text-green { color: var(--green); }
+.text-red { color: var(--red); }
+.text-amber { color: var(--amber); }
+.section-title { font-size: 13px; font-weight: 500; color: var(--text2); margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.6px; }
+</style>
+</head>
+<body>
+
+<!-- ─── Auth Screen ─────────────────────────────────────────────────────── -->
+<div id="auth-screen">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <div class="logo-icon">🗂️</div>
+      <span>NexusDrive</span>
+    </div>
+    <div class="auth-tabs">
+      <button class="auth-tab active" onclick="switchTab('login')">Sign in</button>
+      <button class="auth-tab" onclick="switchTab('signup')">Create account</button>
+    </div>
+    <div id="login-form">
+      <div class="form-group"><label>Email</label><input type="email" id="login-email" placeholder="you@example.com" /></div>
+      <div class="form-group"><label>Password</label><input type="password" id="login-password" placeholder="••••••••" /></div>
+      <button class="btn-primary" onclick="handleLogin()">Sign in</button>
+      <p style="font-size:11px;color:var(--text3);text-align:center;margin-top:12px;">Demo: any email + any password (6+ chars)</p>
+    </div>
+    <div id="signup-form" style="display:none">
+      <div class="form-group"><label>Username</label><input type="text" id="signup-user" placeholder="johndoe" /></div>
+      <div class="form-group"><label>Email</label><input type="email" id="signup-email" placeholder="you@example.com" /></div>
+      <div class="form-group"><label>Password</label><input type="password" id="signup-password" placeholder="Min 6 characters" /></div>
+      <button class="btn-primary" onclick="handleSignup()">Create account</button>
+    </div>
+    <div class="auth-error" id="auth-error"></div>
+  </div>
+</div>
+
+<!-- ─── App ────────────────────────────────────────────────────────────── -->
+<div id="app">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="logo-icon">🗂️</div>
+      <span>NexusDrive</span>
+    </div>
+    <nav class="sidebar-nav">
+      <button class="nav-item active" onclick="showPanel('files')" data-panel="files">
+        <span class="icon">📁</span> My Files
+      </button>
+      <button class="nav-item" onclick="showPanel('upload')" data-panel="upload">
+        <span class="icon">⬆️</span> Upload
+      </button>
+      <button class="nav-item" onclick="showPanel('nodes')" data-panel="nodes">
+        <span class="icon">🖥️</span> Node Status
+      </button>
+      <button class="nav-item" onclick="showPanel('logs')" data-panel="logs">
+        <span class="icon">📋</span> Activity Log
+      </button>
+    </nav>
+    <div class="nav-sep"></div>
+
+    <!-- Live Node Status -->
+    <div class="nodes-panel">
+      <div class="nodes-title">Storage Nodes</div>
+      <div id="sidebar-nodes"></div>
+      <div class="storage-bar-wrap">
+        <div class="storage-label">
+          <span>Storage</span>
+          <span id="storage-pct">0%</span>
+        </div>
+        <div class="storage-bar"><div class="storage-bar-fill" id="storage-fill" style="width:0%"></div></div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="main">
+    <!-- Topbar -->
+    <div class="topbar">
+      <div class="topbar-title" id="panel-title">My Files</div>
+      <div class="topbar-user">
+        <div class="user-avatar" id="user-initials">?</div>
+        <span id="user-name">—</span>
+        <button class="btn-logout" onclick="logout()">Sign out</button>
+      </div>
+    </div>
+
+    <!-- ─── Files Panel ─────────────────────────────────────────────── -->
+    <div class="panel active" id="panel-files" style="overflow:hidden">
+      <div class="files-header">
+        <input type="text" class="search-box" placeholder="Search files..." oninput="filterFiles(this.value)" />
+        <span class="files-count" id="files-count">0 files</span>
+        <div class="view-toggle">
+          <button class="view-btn active" onclick="setView('grid')" id="btn-grid">⊞</button>
+          <button class="view-btn" onclick="setView('list')" id="btn-list">☰</button>
+        </div>
+      </div>
+      <div class="files-grid" id="files-grid"></div>
+    </div>
+
+    <!-- ─── Upload Panel ────────────────────────────────────────────── -->
+    <div class="panel" id="panel-upload">
+      <label class="upload-zone" id="upload-zone">
+        <input type="file" id="file-input" multiple onchange="handleFiles(this.files)" />
+        <div class="upload-zone-icon">📤</div>
+        <h3>Drop files here or click to browse</h3>
+        <p>Max 500MB per file • Any file type</p>
+        <div class="upload-options">
+          <label class="toggle-label"><input type="checkbox" id="opt-encrypt" checked> 🔒 Encrypt chunks</label>
+          <label class="toggle-label"><input type="checkbox" id="opt-replicate" checked> 🔁 Replicate (×2)</label>
+        </div>
+      </label>
+      <div class="upload-progress" id="upload-progress">
+        <div class="progress-header">
+          <span id="progress-label">Uploading...</span>
+          <span id="progress-pct">0%</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
+        <div class="chunk-viz" id="chunk-viz"></div>
+      </div>
+      <!-- Upload log -->
+      <div id="upload-log" style="overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:6px;"></div>
+    </div>
+
+    <!-- ─── Node Dashboard ──────────────────────────────────────────── -->
+    <div class="panel" id="panel-nodes" style="overflow-y:auto">
+      <div class="section-title">Storage Nodes</div>
+      <div class="nodes-grid" id="nodes-grid"></div>
+      <div class="arch-diagram">
+        <div class="arch-title">Distributed Architecture</div>
+        <canvas id="arch-canvas" width="600" height="240" style="width:100%;height:auto;display:block"></canvas>
+      </div>
+    </div>
+
+    <!-- ─── Logs Panel ──────────────────────────────────────────────── -->
+    <div class="panel" id="panel-logs">
+      <div class="files-header" style="flex-shrink:0">
+        <div class="section-title" style="margin:0">Activity Log</div>
+        <button class="btn-cancel" onclick="clearLogs()">Clear</button>
+      </div>
+      <div class="log-list" id="log-list"></div>
+    </div>
+  </main>
+</div>
+
+<!-- ─── Rename Modal ─────────────────────────────────────────────────── -->
+<div class="modal-overlay" id="rename-modal">
+  <div class="modal">
+    <h3>Rename File</h3>
+    <input type="text" class="modal-input" id="rename-input" placeholder="New filename..." />
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('rename-modal')">Cancel</button>
+      <button class="btn-confirm" onclick="confirmRename()">Rename</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── File Detail Modal ────────────────────────────────────────────── -->
+<div class="modal-overlay" id="detail-modal">
+  <div class="modal">
+    <h3 id="detail-title">File Details</h3>
+    <div id="detail-body"></div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('detail-modal')">Close</button>
+      <button class="btn-confirm" onclick="downloadCurrentFile()">⬇ Download</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── Toast Container ──────────────────────────────────────────────── -->
+<div class="toast-container" id="toasts"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════
+//  DFS SIMULATION ENGINE
+//  Full distributed storage simulation in-browser
+//  (mirrors real backend logic for demo purposes)
+// ═══════════════════════════════════════════════════════════════════
+
+const CHUNK_SIZE = 512 * 1024; // 512KB for demo visibility
+const ALL_NODES = ['node1', 'node2', 'node3'];
+const failedNodes = new Set();
+
+// In-memory stores (replace with API calls when backend is running)
+let currentUser = null;
+let files = [];
+let logs = [];
+let nodeChunks = { node1: [], node2: [], node3: [] };
+let storageUsed = 0;
+const STORAGE_LIMIT = 1024 * 1024 * 1024; // 1GB
+
+let renameFileId = null;
+let detailFileId = null;
+let viewMode = 'grid';
+let searchQuery = '';
+
+// ─── Crypto helpers (Web Crypto API) ────────────────────────────────
+const hashBuffer = async (buf) => {
+  const h = await crypto.subtle.digest('SHA-256', buf);
+  return Array.from(new Uint8Array(h)).map(b => b.toString(16).padStart(2,'0')).join('');
+};
+
+const randomId = () => crypto.randomUUID();
+
+// ─── Load Balancer ───────────────────────────────────────────────────
+const selectNodes = (count = 2) => {
+  const active = ALL_NODES.filter(n => !failedNodes.has(n));
+  if (!active.length) throw new Error('All nodes are down!');
+  // Sort by load (fewest chunks first)
+  const sorted = [...active].sort((a,b) => nodeChunks[a].length - nodeChunks[b].length);
+  return sorted.slice(0, Math.min(count, active.length));
+};
+
+// ─── Simulated Encryption (XOR with key for demo) ────────────────────
+const DEMO_KEY = 0x42;
+const encryptData = (bytes) => bytes.map(b => b ^ DEMO_KEY);
+const decryptData = (bytes) => bytes.map(b => b ^ DEMO_KEY);
+
+// ─── Auth Logic ──────────────────────────────────────────────────────
+const users = {};
+
+function handleLogin() {
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  if (!email || password.length < 6) {
+    document.getElementById('auth-error').textContent = 'Valid email and 6+ char password required.';
+    return;
+  }
+  const user = users[email];
+  if (!user || user.password !== password) {
+    document.getElementById('auth-error').textContent = 'Invalid credentials.';
+    return;
+  }
+  loginUser(user);
+}
+
+function handleSignup() {
+  const username = document.getElementById('signup-user').value.trim();
+  const email = document.getElementById('signup-email').value.trim();
+  const password = document.getElementById('signup-password').value;
+  if (!username || !email || password.length < 6) {
+    document.getElementById('auth-error').textContent = 'All fields required. Password min 6 chars.';
+    return;
+  }
+  if (users[email]) {
+    document.getElementById('auth-error').textContent = 'Email already registered.';
+    return;
+  }
+  const user = { id: randomId(), username, email, password };
+  users[email] = user;
+  loginUser(user);
+}
+
+function loginUser(user) {
+  currentUser = user;
+  document.getElementById('auth-screen').style.display = 'none';
+  document.getElementById('app').classList.add('visible');
+  document.getElementById('user-initials').textContent = user.username[0].toUpperCase();
+  document.getElementById('user-name').textContent = user.username;
+  addLog('login', null, user.username, { email: user.email });
+  loadFiles();
+  renderNodes();
+  drawArchDiagram();
+}
+
+function logout() {
+  currentUser = null;
+  document.getElementById('auth-screen').style.display = 'flex';
+  document.getElementById('app').classList.remove('visible');
+}
+
+function switchTab(tab) {
+  document.getElementById('login-form').style.display = tab === 'login' ? 'block' : 'none';
+  document.getElementById('signup-form').style.display = tab === 'signup' ? 'block' : 'none';
+  document.getElementById('auth-error').textContent = '';
+  document.querySelectorAll('.auth-tab').forEach((t,i) => {
+    t.classList.toggle('active', (i === 0 && tab === 'login') || (i === 1 && tab === 'signup'));
+  });
+}
+
+// ─── Panel Navigation ─────────────────────────────────────────────────
+const panelTitles = { files: 'My Files', upload: 'Upload Files', nodes: 'Node Status', logs: 'Activity Log' };
+
+function showPanel(id) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('panel-' + id).classList.add('active');
+  document.querySelector(`[data-panel="${id}"]`).classList.add('active');
+  document.getElementById('panel-title').textContent = panelTitles[id];
+  if (id === 'nodes') { renderNodes(); setTimeout(drawArchDiagram, 100); }
+  if (id === 'logs') renderLogs();
+}
+
+// ─── Upload ───────────────────────────────────────────────────────────
+const uploadZone = document.getElementById('upload-zone');
+uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('dragover'); });
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'));
+uploadZone.addEventListener('drop', e => {
+  e.preventDefault(); uploadZone.classList.remove('dragover');
+  handleFiles(e.dataTransfer.files);
+});
+
+async function handleFiles(fileList) {
+  for (const file of Array.from(fileList)) {
+    await uploadFile(file);
+  }
+}
+
+async function uploadFile(file) {
+  const encrypt = document.getElementById('opt-encrypt').checked;
+  const replicate = document.getElementById('opt-replicate').checked;
+  const replicationFactor = replicate ? 2 : 1;
+
+  const progress = document.getElementById('upload-progress');
+  const progLabel = document.getElementById('progress-label');
+  const progPct = document.getElementById('progress-pct');
+  const progFill = document.getElementById('progress-fill');
+  const chunkViz = document.getElementById('chunk-viz');
+  progress.classList.add('visible');
+  chunkViz.innerHTML = '';
+
+  try {
+    // Read file
+    const buffer = await file.arrayBuffer();
+    const bytes = new Uint8Array(buffer);
+    const fileHash = await hashBuffer(buffer);
+
+    // Check dedup
+    const dup = files.find(f => f.hash === fileHash && f.status === 'active');
+    if (dup) {
+      toast('Duplicate file detected! Skipping re-upload. 🔁', 'info');
+      addLog('upload_dedup', dup.fileId, file.name, { dedup: true });
+      progress.classList.remove('visible');
+      return;
+    }
+
+    // Split into chunks
+    const chunks = [];
+    const total = Math.ceil(bytes.length / CHUNK_SIZE) || 1;
+
+    // Create chunk viz blocks
+    for (let i = 0; i < total; i++) {
+      const block = document.createElement('div');
+      block.className = 'chunk-block';
+      block.textContent = i;
+      chunkViz.appendChild(block);
+      chunks.push({ index: i, block });
+    }
+
+    const chunkMeta = [];
+
+    // Upload each chunk (with simulated parallel processing)
+    await Promise.all(chunks.map(async ({ index, block }) => {
+      await sleep(index * 80); // staggered for visual effect
+      block.classList.add('uploading');
+
+      const start = index * CHUNK_SIZE;
+      const end = Math.min(start + CHUNK_SIZE, bytes.length);
+      let chunkData = Array.from(bytes.slice(start, end));
+
+      // Encrypt
+      if (encrypt) chunkData = encryptData(chunkData);
+
+      const chunkId = randomId();
+      const chunkHash = await hashBuffer(new Uint8Array(bytes.slice(start, end)));
+
+      // Load-balance across nodes
+      const assignedNodes = selectNodes(replicationFactor);
+
+      // "Store" on nodes (track in nodeChunks)
+      assignedNodes.forEach(n => nodeChunks[n].push(chunkId));
+
+      await sleep(150 + Math.random() * 200);
+      block.classList.remove('uploading');
+      block.classList.add('done');
+
+      await sleep(100);
+      if (assignedNodes.length > 1) block.classList.add('replicated');
+
+      chunkMeta[index] = {
+        chunkId,
+        chunkIndex: index,
+        size: end - start,
+        hash: chunkHash,
+        nodes: assignedNodes,
+        encrypted: encrypt,
+        // Store actual data for download simulation
+        data: encrypt ? chunkData : Array.from(bytes.slice(start, end))
+      };
+
+      const pct = Math.round(((index + 1) / total) * 100);
+      progFill.style.width = pct + '%';
+      progPct.textContent = pct + '%';
+      progLabel.textContent = `Uploading chunk ${index + 1}/${total}...`;
+    }));
+
+    // Create file record
+    const fileId = randomId();
+    const fileRecord = {
+      fileId,
+      userId: currentUser.id,
+      name: file.name,
+      originalName: file.name,
+      mimeType: file.type,
+      size: file.size,
+      hash: fileHash,
+      chunkSize: CHUNK_SIZE,
+      chunks: chunkMeta,
+      encrypted: encrypt,
+      replicationFactor,
+      status: 'active',
+      downloadCount: 0,
+      version: 1,
+      createdAt: new Date()
+    };
+
+    files.unshift(fileRecord);
+    storageUsed += file.size;
+
+    progLabel.textContent = '✓ Upload complete!';
+    toast(`${file.name} uploaded in ${total} chunk${total > 1 ? 's' : ''} across ${[...new Set(chunkMeta.flatMap(c => c.nodes))].join(', ')}`, 'success');
+
+    addLog('upload', fileId, file.name, {
+      size: file.size,
+      chunks: total,
+      nodes: [...new Set(chunkMeta.flatMap(c => c.nodes))],
+      encrypted: encrypt
+    });
+
+    // Add upload log entry in panel
+    const logEl = document.createElement('div');
+    logEl.className = 'log-entry';
+    logEl.innerHTML = `
+      <span class="log-action upload">UPLOAD</span>
+      <span class="log-details">
+        <strong>${file.name}</strong> — ${formatSize(file.size)} — 
+        ${total} chunk${total>1?'s':''} — nodes: ${[...new Set(chunkMeta.flatMap(c=>c.nodes))].join(', ')}
+        ${encrypt ? ' — 🔒 encrypted' : ''} ${replicationFactor > 1 ? ' — 🔁 replicated' : ''}
+      </span>
+    `;
+    document.getElementById('upload-log').prepend(logEl);
+
+    loadFiles();
+    updateStorageBar();
+    renderSidebarNodes();
+
+    await sleep(1500);
+    progress.classList.remove('visible');
+    chunkViz.innerHTML = '';
+    progFill.style.width = '0%';
+    progPct.textContent = '0%';
+
+  } catch (err) {
+    toast('Upload failed: ' + err.message, 'error');
+    addLog('upload_error', null, file.name, { error: err.message }, 'error');
+    progress.classList.remove('visible');
+  }
+}
+
+// ─── Download ─────────────────────────────────────────────────────────
+async function downloadFile(fileId) {
+  const file = files.find(f => f.fileId === fileId);
+  if (!file) return;
+
+  toast(`Reconstructing ${file.name}...`, 'info');
+
+  try {
+    const buffers = new Array(file.chunks.length);
+    let failedNode = null;
+
+    for (const chunk of file.chunks) {
+      let data = null;
+      for (const nodeName of chunk.nodes) {
+        if (failedNodes.has(nodeName)) {
+          failedNode = nodeName;
+          continue; // Skip failed node, try replica
+        }
+        data = chunk.data;
+        break;
+      }
+      if (!data) throw new Error(`Chunk ${chunk.chunkIndex} unavailable on all nodes`);
+      const decrypted = chunk.encrypted ? decryptData([...data]) : [...data];
+      buffers[chunk.chunkIndex] = new Uint8Array(decrypted);
+    }
+
+    const merged = new Uint8Array(buffers.reduce((sum, b) => sum + b.length, 0));
+    let offset = 0;
+    for (const b of buffers) { merged.set(b, offset); offset += b.length; }
+
+    // Trigger browser download
+    const blob = new Blob([merged], { type: file.mimeType || 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = file.name; a.click();
+    URL.revokeObjectURL(url);
+
+    file.downloadCount++;
+    if (failedNode) toast(`✓ Downloaded via replica (${failedNode} was unavailable)`, 'success');
+    else toast(`${file.name} downloaded successfully`, 'success');
+
+    addLog('download', fileId, file.name, { size: file.size, usedReplica: !!failedNode });
+    loadFiles();
+  } catch (err) {
+    toast('Download failed: ' + err.message, 'error');
+    addLog('download_error', fileId, file.name, { error: err.message }, 'error');
+  }
+}
+
+function downloadCurrentFile() {
+  if (detailFileId) downloadFile(detailFileId);
+  closeModal('detail-modal');
+}
+
+// ─── Delete ───────────────────────────────────────────────────────────
+function deleteFile(fileId) {
+  const file = files.find(f => f.fileId === fileId);
+  if (!file) return;
+
+  if (!confirm(`Delete "${file.name}"? This cannot be undone.`)) return;
+
+  // Remove chunks from nodes
+  file.chunks.forEach(chunk => {
+    chunk.nodes.forEach(n => {
+      nodeChunks[n] = nodeChunks[n].filter(id => id !== chunk.chunkId);
+    });
+  });
+
+  file.status = 'deleted';
+  storageUsed = Math.max(0, storageUsed - file.size);
+
+  toast(`${file.name} deleted`, 'info');
+  addLog('delete', fileId, file.name, { size: file.size });
+  loadFiles();
+  updateStorageBar();
+  renderSidebarNodes();
+}
+
+// ─── Rename ───────────────────────────────────────────────────────────
+function startRename(fileId) {
+  const file = files.find(f => f.fileId === fileId);
+  if (!file) return;
+  renameFileId = fileId;
+  document.getElementById('rename-input').value = file.name;
+  document.getElementById('rename-modal').classList.add('open');
+}
+
+function confirmRename() {
+  const file = files.find(f => f.fileId === renameFileId);
+  if (!file) return;
+  const newName = document.getElementById('rename-input').value.trim();
+  if (!newName) return;
+  const oldName = file.name;
+  file.name = newName;
+  addLog('rename', renameFileId, newName, { from: oldName });
+  toast(`Renamed to "${newName}"`, 'success');
+  closeModal('rename-modal');
+  loadFiles();
+}
+
+// ─── File Detail ──────────────────────────────────────────────────────
+function showDetail(fileId) {
+  const file = files.find(f => f.fileId === fileId);
+  if (!file) return;
+  detailFileId = fileId;
+
+  document.getElementById('detail-title').textContent = file.name;
+
+  const nodeSet = [...new Set(file.chunks.flatMap(c => c.nodes))];
+  const chunkPills = file.chunks.map(c =>
+    `<div class="chunk-pill" title="Nodes: ${c.nodes.join(', ')}">
+      #${c.chunkIndex} <span class="chunk-node-list">[${c.nodes.join(',')}]</span>
+    </div>`
+  ).join('');
+
+  document.getElementById('detail-body').innerHTML = `
+    <div class="file-detail-row"><span class="file-detail-label">File ID</span><span class="file-detail-val">${file.fileId.slice(0,8)}...</span></div>
+    <div class="file-detail-row"><span class="file-detail-label">Size</span><span class="file-detail-val">${formatSize(file.size)}</span></div>
+    <div class="file-detail-row"><span class="file-detail-label">Type</span><span class="file-detail-val">${file.mimeType || 'unknown'}</span></div>
+    <div class="file-detail-row"><span class="file-detail-label">Chunks</span><span class="file-detail-val">${file.chunks.length} × ${formatSize(CHUNK_SIZE)}</span></div>
+    <div class="file-detail-row"><span class="file-detail-label">Nodes</span><span class="file-detail-val">${nodeSet.join(', ')}</span></div>
+    <div class="file-detail-row"><span class="file-detail-label">Encrypted</span><span class="file-detail-val ${file.encrypted ? 'text-green' : 'text-amber'}">${file.encrypted ? '🔒 Yes' : '⚠️ No'}</span></div>
+    <div class="file-detail-row"><span class="file-detail-label">Replication</span><span class="file-detail-val">×${file.replicationFactor}</span></div>
+    <div class="file-detail-row"><span class="file-detail-label">Downloads</span><span class="file-detail-val">${file.downloadCount}</span></div>
+    <div class="file-detail-row"><span class="file-detail-label">Hash (SHA-256)</span><span class="file-detail-val">${file.hash ? file.hash.slice(0,20)+'...' : '—'}</span></div>
+    <div style="margin-top:12px;font-size:11px;color:var(--text2);margin-bottom:6px;">Chunk map (index → nodes):</div>
+    <div class="chunk-map">${chunkPills}</div>
+  `;
+
+  document.getElementById('detail-modal').classList.add('open');
+}
+
+// ─── File Rendering ───────────────────────────────────────────────────
+function getFileIcon(mime = '', name = '') {
+  if (mime.startsWith('image/')) return '🖼️';
+  if (mime.startsWith('video/')) return '🎬';
+  if (mime.startsWith('audio/')) return '🎵';
+  if (mime === 'application/pdf') return '📕';
+  if (mime.includes('spreadsheet') || name.endsWith('.xlsx') || name.endsWith('.csv')) return '📊';
+  if (mime.includes('presentation') || name.endsWith('.pptx')) return '📊';
+  if (mime.includes('word') || name.endsWith('.docx')) return '📝';
+  if (mime.includes('zip') || mime.includes('rar') || name.endsWith('.tar')) return '📦';
+  if (name.endsWith('.js') || name.endsWith('.ts') || name.endsWith('.py') || name.endsWith('.json')) return '💻';
+  return '📄';
+}
+
+function loadFiles() {
+  const active = files.filter(f => f.status === 'active' && f.userId === currentUser.id);
+  const filtered = searchQuery ? active.filter(f => f.name.toLowerCase().includes(searchQuery)) : active;
+
+  document.getElementById('files-count').textContent = `${filtered.length} file${filtered.length !== 1 ? 's' : ''}`;
+
+  const grid = document.getElementById('files-grid');
+  grid.className = 'files-grid' + (viewMode === 'list' ? ' list-mode' : '');
+
+  if (!filtered.length) {
+    grid.innerHTML = `
+      <div class="empty-state" style="grid-column:1/-1">
+        <div class="icon">📭</div>
+        <h3>${searchQuery ? 'No files match your search' : 'No files yet'}</h3>
+        <p>${searchQuery ? 'Try a different search term' : 'Upload files to get started'}</p>
+      </div>`;
+    return;
+  }
+
+  grid.innerHTML = filtered.map(file => {
+    const nodeSet = [...new Set(file.chunks.flatMap(c => c.nodes))];
+    return `
+    <div class="file-card" onclick="showDetail('${file.fileId}')">
+      ${viewMode !== 'list' ? `<div class="file-icon">${getFileIcon(file.mimeType, file.name)}</div>` : ''}
+      ${viewMode === 'list' ? `<div style="font-size:22px">${getFileIcon(file.mimeType, file.name)}</div>` : ''}
+      <div class="file-info">
+        <div class="file-name" title="${file.name}">${file.name}</div>
+        <div class="file-meta">${formatSize(file.size)} · ${timeAgo(file.createdAt)}</div>
+        <div class="file-badges">
+          ${file.encrypted ? '<span class="badge badge-encrypted">🔒 enc</span>' : ''}
+          <span class="badge badge-chunks">${file.chunks.length} chunks</span>
+          <span class="badge badge-nodes">${nodeSet.join('·')}</span>
+        </div>
+      </div>
+      <div class="file-actions" onclick="event.stopPropagation()">
+        <button class="act-btn primary" onclick="downloadFile('${file.fileId}')" title="Download">⬇</button>
+        <button class="act-btn" onclick="startRename('${file.fileId}')" title="Rename">✏</button>
+        <button class="act-btn danger" onclick="deleteFile('${file.fileId}')" title="Delete">🗑</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function filterFiles(q) { searchQuery = q.toLowerCase(); loadFiles(); }
+function setView(v) {
+  viewMode = v;
+  document.getElementById('btn-grid').classList.toggle('active', v === 'grid');
+  document.getElementById('btn-list').classList.toggle('active', v === 'list');
+  loadFiles();
+}
+
+// ─── Node Management ──────────────────────────────────────────────────
+function renderSidebarNodes() {
+  const container = document.getElementById('sidebar-nodes');
+  container.innerHTML = ALL_NODES.map(n => {
+    const failed = failedNodes.has(n);
+    return `
+    <div class="node-item">
+      <div class="node-dot ${failed ? 'failed' : 'online'}"></div>
+      <span class="node-name">${n}</span>
+      <span class="node-chunks">${nodeChunks[n].length}</span>
+      <button class="node-fail-btn ${failed ? 'restore' : ''}" onclick="toggleNode('${n}')">
+        ${failed ? 'restore' : 'fail'}
+      </button>
+    </div>`;
+  }).join('');
+}
+
+function renderNodes() {
+  const grid = document.getElementById('nodes-grid');
+  if (!grid) return;
+  grid.innerHTML = ALL_NODES.map(n => {
+    const failed = failedNodes.has(n);
+    const chunks = nodeChunks[n].length;
+    const size = chunks * CHUNK_SIZE * 0.7; // estimate
+    return `
+    <div class="node-card ${failed ? 'failed' : 'online'}">
+      <div class="node-card-header">
+        <div class="node-card-dot ${failed ? 'failed' : 'online'}"></div>
+        <span class="node-card-title">${n}</span>
+        <span class="node-card-status ${failed ? 'failed' : 'online'}">${failed ? 'FAILED' : 'ONLINE'}</span>
+      </div>
+      <div class="node-stat"><span class="node-stat-label">Chunks stored</span><span class="node-stat-value">${chunks}</span></div>
+      <div class="node-stat"><span class="node-stat-label">Disk used</span><span class="node-stat-value">${formatSize(size)}</span></div>
+      <div class="node-stat"><span class="node-stat-label">Load</span><span class="node-stat-value">${chunks > 0 ? Math.min(99, Math.floor(chunks / 10)) : 0}%</span></div>
+      <div class="node-stat"><span class="node-stat-label">Replication</span><span class="node-stat-value">×2</span></div>
+      <button class="node-btn ${failed ? 'restore' : 'fail'}" onclick="toggleNode('${n}')">
+        ${failed ? '🔄 Restore Node' : '⚠️ Simulate Failure'}
+      </button>
+    </div>`;
+  }).join('');
+  renderSidebarNodes();
+}
+
+function toggleNode(nodeName) {
+  if (failedNodes.has(nodeName)) {
+    failedNodes.delete(nodeName);
+    toast(`${nodeName} restored ✓`, 'success');
+    addLog('node_restore', null, nodeName, { node: nodeName });
+  } else {
+    failedNodes.add(nodeName);
+    toast(`${nodeName} marked as FAILED — replicas will be used`, 'error');
+    addLog('node_failure', null, nodeName, { node: nodeName });
+  }
+  renderNodes();
+  drawArchDiagram();
+}
+
+// ─── Architecture Diagram ─────────────────────────────────────────────
+function drawArchDiagram() {
+  const canvas = document.getElementById('arch-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  const dark = '#8b90a0';
+  const accent = '#6c8aff';
+  const green = '#34d399';
+  const red = '#f87171';
+  const surface = '#1a1e2b';
+  const border = 'rgba(255,255,255,0.1)';
+
+  // Helper functions
+  const roundRect = (x, y, w, h, r, fill, stroke) => {
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, r);
+    ctx.fillStyle = fill; ctx.fill();
+    ctx.strokeStyle = stroke; ctx.lineWidth = 1;
+    ctx.stroke();
+  };
+
+  const label = (text, x, y, color = dark, size = 11, bold = false) => {
+    ctx.font = `${bold ? '600' : '400'} ${size}px "DM Sans", sans-serif`;
+    ctx.fillStyle = color;
+    ctx.textAlign = 'center';
+    ctx.fillText(text, x, y);
+  };
+
+  const arrow = (x1, y1, x2, y2, color = dark) => {
+    ctx.beginPath();
+    ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
+    ctx.strokeStyle = color; ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 3]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // Arrowhead
+    const angle = Math.atan2(y2 - y1, x2 - x1);
+    ctx.beginPath();
+    ctx.moveTo(x2, y2);
+    ctx.lineTo(x2 - 8*Math.cos(angle-0.4), y2 - 8*Math.sin(angle-0.4));
+    ctx.lineTo(x2 - 8*Math.cos(angle+0.4), y2 - 8*Math.sin(angle+0.4));
+    ctx.closePath();
+    ctx.fillStyle = color; ctx.fill();
+  };
+
+  // Client
+  roundRect(20, 90, 110, 60, 8, surface, border);
+  label('👤 Client', 75, 116, '#e8eaf0', 12, true);
+  label('Browser / App', 75, 135, dark, 10);
+
+  // Master Server
+  roundRect(210, 70, 140, 100, 8, surface, accent + '55');
+  label('🖥 Master Server', 280, 98, '#e8eaf0', 12, true);
+  label('Metadata + Auth', 280, 116, dark, 10);
+  label('Load Balancer', 280, 132, dark, 10);
+  label('Chunk Allocator', 280, 148, dark, 10);
+
+  // MongoDB
+  roundRect(210, 190, 140, 44, 8, surface, border);
+  label('🗄 MongoDB', 280, 211, '#e8eaf0', 11, true);
+  label('Metadata Store', 280, 227, dark, 10);
+
+  // Storage Nodes
+  const nodeX = [430, 510, 590];
+  const nodeY = 80;
+  nodeX.forEach((x, i) => {
+    const name = `node${i+1}`;
+    const failed = failedNodes.has(name);
+    const clr = failed ? red : green;
+    roundRect(x, nodeY, 68, 80, 8, surface, clr + '44');
+    label(name, x + 34, nodeY + 22, clr, 10, true);
+    label(nodeChunks[name].length + ' chunks', x + 34, nodeY + 40, dark, 10);
+    label(failed ? '✗ FAILED' : '✓ online', x + 34, nodeY + 58, clr, 10);
+    // Replication indicator
+    if (!failed && nodeChunks[name].length > 0) {
+      label('×2 rep', x + 34, nodeY + 72, '#a78bfa', 9);
+    }
+  });
+
+  // Chunk split indicator
+  roundRect(390, 180, 290, 44, 8, surface, border);
+  label('📦 Chunks (1MB each)', 535, 200, '#e8eaf0', 11, true);
+  label('Distributed across nodes with replication', 535, 218, dark, 10);
+
+  // Draw arrows
+  arrow(130, 120, 210, 120, accent); // Client → Master
+  arrow(280, 170, 280, 190, dark);   // Master → MongoDB
+  arrow(350, 105, 430, 105, accent); // Master → node1
+  arrow(350, 120, 510, 120, accent); // Master → node2
+  arrow(350, 135, 590, 135, accent); // Master → node3
+  arrow(430, 200, 390, 210, dark);   // Chunks → node bar
+
+  label('Upload / Download', 170, 108, dark, 9);
+  label('Metadata', 295, 185, dark, 9);
+}
+
+// ─── Logs ─────────────────────────────────────────────────────────────
+function addLog(action, fileId, name, details, level = 'info') {
+  logs.unshift({ action, fileId, name, details, level, time: new Date() });
+}
+
+function renderLogs() {
+  const list = document.getElementById('log-list');
+  if (!logs.length) {
+    list.innerHTML = '<div class="empty-state"><div class="icon">📋</div><h3>No activity yet</h3><p>Actions will appear here</p></div>';
+    return;
+  }
+  list.innerHTML = logs.map(l => `
+    <div class="log-entry">
+      <span class="log-time">${l.time.toLocaleTimeString()}</span>
+      <span class="log-action ${l.action}">${l.action.toUpperCase()}</span>
+      <span class="log-details">
+        ${l.name || ''} ${l.details ? '— ' + Object.entries(l.details).map(([k,v]) => `${k}: ${v}`).join(', ') : ''}
+      </span>
+    </div>`).join('');
+}
+
+function clearLogs() { logs = []; renderLogs(); }
+
+// ─── Storage Bar ──────────────────────────────────────────────────────
+function updateStorageBar() {
+  const pct = Math.min(100, (storageUsed / STORAGE_LIMIT) * 100).toFixed(1);
+  document.getElementById('storage-fill').style.width = pct + '%';
+  document.getElementById('storage-pct').textContent = pct + '%';
+}
+
+// ─── Utilities ────────────────────────────────────────────────────────
+function formatSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  if (bytes < 1024 * 1024 * 1024) return (bytes / 1024 / 1024).toFixed(2) + ' MB';
+  return (bytes / 1024 / 1024 / 1024).toFixed(2) + ' GB';
+}
+
+function timeAgo(date) {
+  const s = Math.floor((Date.now() - new Date(date)) / 1000);
+  if (s < 60) return 'just now';
+  if (s < 3600) return Math.floor(s/60) + 'm ago';
+  if (s < 86400) return Math.floor(s/3600) + 'h ago';
+  return Math.floor(s/86400) + 'd ago';
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+function toast(msg, type = 'info', duration = 4000) {
+  const t = document.createElement('div');
+  t.className = `toast ${type}`;
+  const icons = { success: '✓', error: '✕', info: 'ℹ' };
+  t.innerHTML = `<span>${icons[type]}</span><span>${msg}</span>`;
+  document.getElementById('toasts').appendChild(t);
+  setTimeout(() => t.remove(), duration);
+}
+
+function closeModal(id) {
+  document.getElementById(id).classList.remove('open');
+}
+
+// Close modals on overlay click
+document.querySelectorAll('.modal-overlay').forEach(overlay => {
+  overlay.addEventListener('click', e => {
+    if (e.target === overlay) overlay.classList.remove('open');
+  });
+});
+
+// ─── Init ─────────────────────────────────────────────────────────────
+renderSidebarNodes();
+updateStorageBar();
+
+// Add demo user for quick access
+users['demo@nexusdrive.io'] = { id: randomId(), username: 'demo', email: 'demo@nexusdrive.io', password: 'demo123' };
+document.getElementById('login-email').value = 'demo@nexusdrive.io';
+document.getElementById('login-password').value = 'demo123';
+</script>
+</body>
+</html>

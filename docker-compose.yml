@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:7
+    container_name: dfs-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    environment:
+      MONGO_INITDB_DATABASE: dfs
+
+  server:
+    build: ./server
+    container_name: dfs-server
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    depends_on:
+      - mongodb
+    environment:
+      - MONGO_URI=mongodb://mongodb:27017/dfs
+      - JWT_SECRET=your-super-secret-jwt-key-change-this
+      - ENCRYPTION_KEY=your-32-char-encryption-passphrase
+      - PORT=5000
+    volumes:
+      - ./server/nodes:/app/nodes
+      - ./server/logs:/app/logs
+
+volumes:
+  mongo_data:
