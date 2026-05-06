@@ -53,6 +53,10 @@ mongoose.connect(MONGO_URI)
 //app.use('/api/auth', authRoutes);
 app.use('/api/files', fileRoutes);
 //app.use('/api/nodes', nodeRoutes);
+// Root Route
+app.get('/', (req, res) => {
+  res.send('NexusDrive Backend Running 🚀');
+});
 
 // Health check
 app.get('/api/health', (req, res) => {
